@@ -94,3 +94,12 @@ Dữ liệu trong `data/` là dữ liệu thật của khoá học (đã ẩn da
 6. Sau sự kiện, **xoá các bản sao data pack** khỏi máy cá nhân và các công cụ đã upload nếu ban tổ chức yêu cầu.
 
 Vi phạm được xử lý theo quy định của khoá và có thể ảnh hưởng trực tiếp đến điểm của nhóm.
+
+## Thành viên, phân công công việc
+| STT | Mã sinh viên | Họ và tên | Phân công công việc |
+| --- | --- | --- | --- |
+| 1 | 2A202601434 | Trần Bình Minh | Canvas + Evidence |
+| 2 | 2A202601760 | Trần Kiều Hạnh |  Mining số liệu |
+| 3 | 2A202601682 | Lương Bảo Long | Prompt + Build |
+| 4 | 2A202601772 | Tạ Đăng Đức | Spec + Golden set |
+| 5 | 2A202601756 | Trần An Thắng | Validation + Slide |
