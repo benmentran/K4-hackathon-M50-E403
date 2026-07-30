@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowUp, Sparkles, X, BookOpen, Bot, User, PanelRightClose } from "lucide-react"
+import type { Deck } from "@/lib/deck-types"
 import { ANSWERS, FALLBACK, OPENING_SUGGESTIONS, type Suggestion, type Turn } from "@/lib/tutor-data"
 
-const INITIAL: Turn[] = [
+const SAMPLE_INITIAL: Turn[] = [
   {
     id: "t1",
     role: "user",
@@ -20,25 +21,97 @@ const INITIAL: Turn[] = [
   },
 ]
 
+/** Builds an opening turn + suggestions from any uploaded deck's text outline. */
+function buildDeckIntro(deck: Deck): { turns: Turn[]; answers: Record<string, Answerish> } {
+  const pages = deck.outline.filter((s) => s.bullets.length > 0 || s.title)
+  const picks = [pages[0], pages[Math.floor(pages.length / 2)], pages[pages.length - 1]].filter(
+    (s, i, arr) => s && arr.findIndex((x) => x?.page === s.page) === i,
+  )
+
+  const answers: Record<string, Answerish> = {}
+  const suggestions: Suggestion[] = picks.map((slide, i) => {
+    const id = `deck-${deck.id}-${slide.page}`
+    answers[id] = {
+      page: slide.page,
+      content: slide.bullets.length
+        ? `Trang ${slide.page} — "${slide.title}". Các ý chính trong slide: ${slide.bullets.join(" · ")}`
+        : `Trang ${slide.page} có tiêu đề "${slide.title}", nhưng phần nội dung chủ yếu là hình ảnh nên không trích được text.`,
+      suggestions: [],
+    }
+    return {
+      id,
+      question: `Nội dung chính của trang ${slide.page} là gì?`,
+      page: slide.page,
+      tag: i === 1 ? "Đào sâu" : "Ôn nhanh",
+    }
+  })
+
+  for (const id of Object.keys(answers)) {
+    answers[id].suggestions = suggestions.filter((s) => s.id !== id)
+  }
+
+  return {
+    turns: [
+      {
+        id: `intro-${deck.id}`,
+        role: "tutor",
+        page: deck.firstPage,
+        content: `Đã nạp "${deck.title}" với ${deck.pageCount} trang. Bạn có thể hỏi về bất kỳ trang nào, hoặc chọn một gợi ý bên dưới.`,
+        suggestions,
+      },
+    ],
+    answers,
+  }
+}
+
+type Answerish = { content: string; page: number; suggestions: Suggestion[] }
+
 export function TutorChat({
+  deck,
   onPageChange,
   onCollapse,
 }: {
+  deck: Deck
   onPageChange: (page: number) => void
   onCollapse: () => void
 }) {
-  const [turns, setTurns] = useState<Turn[]>(INITIAL)
+  const isSample = deck.kind === "sample"
+  const intro = useMemo(() => (isSample ? null : buildDeckIntro(deck)), [deck, isSample])
+
+  const [turns, setTurns] = useState<Turn[]>(SAMPLE_INITIAL)
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({})
   const [draft, setDraft] = useState("")
   const [thinking, setThinking] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    setTurns(intro ? intro.turns : SAMPLE_INITIAL)
+    setDismissed({})
+    setThinking(false)
+  }, [intro])
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [turns, thinking])
 
+  function deckFallback(question: string): Answerish {
+    const match = question.match(/\b(\d{1,3})\b/)
+    const wanted = match ? Number(match[1]) : null
+    const slide = deck.outline.find((s) => s.page === wanted) ?? deck.outline[0]
+
+    return {
+      page: slide.page,
+      content: slide.bullets.length
+        ? `Theo trang ${slide.page} ("${slide.title}"): ${slide.bullets.join(" · ")}`
+        : `Trang ${slide.page} ("${slide.title}") không trích được nhiều text — bạn xem trực tiếp slide bên cạnh nhé.`,
+      suggestions: intro?.turns[0].suggestions?.slice(0, 2) ?? [],
+    }
+  }
+
   function ask(question: string, id?: string) {
-    const answer = (id && ANSWERS[id]) || FALLBACK
+    const answer = isSample
+      ? (id && ANSWERS[id]) || FALLBACK
+      : (id && intro?.answers[id]) || deckFallback(question)
     const stamp = Date.now()
 
     setTurns((prev) => [...prev, { id: `u${stamp}`, role: "user", content: question }])
@@ -77,7 +150,7 @@ export function TutorChat({
         </span>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-semibold text-card-foreground">VLearn AI Tutor</span>
-          <span className="text-xs text-muted-foreground">Tự gợi ý câu hỏi tiếp theo</span>
+          <span className="truncate text-xs text-muted-foreground">{deck.title}</span>
         </div>
         <button
           type="button"

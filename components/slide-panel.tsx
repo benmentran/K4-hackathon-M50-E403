@@ -1,27 +1,32 @@
 "use client"
 
-import { useEffect, useRef } from "react"
-import { ChevronLeft, ChevronRight, FileText, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
-import { LESSON } from "@/lib/tutor-data"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { ChevronLeft, ChevronRight, FileText, Library, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
+import { PdfPageView } from "@/components/pdf-page-view"
+import { type Deck, pdfFileUrl } from "@/lib/deck-types"
 import { cn } from "@/lib/utils"
 
 const ZOOM_STEPS = [0.75, 0.9, 1, 1.25, 1.5, 1.75, 2]
 const DEFAULT_ZOOM_INDEX = 2
 
 export function SlidePanel({
+  deck,
   page,
   onPageChange,
   zoomIndex,
   onZoomIndexChange,
   wide,
+  onOpenLibrary,
 }: {
+  deck: Deck
   page: number
   onPageChange: (page: number) => void
   zoomIndex: number
   onZoomIndexChange: (index: number) => void
   wide: boolean
+  onOpenLibrary: () => void
 }) {
-  const slides = LESSON.slides
+  const slides = deck.outline
   const index = Math.max(
     0,
     slides.findIndex((s) => s.page === page),
@@ -29,14 +34,36 @@ export function SlidePanel({
   const slide = slides[index]
   const zoom = ZOOM_STEPS[zoomIndex]
   const canvasRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState(720)
 
   useEffect(() => {
     canvasRef.current?.scrollTo({ top: 0 })
-  }, [page])
+  }, [page, deck.id])
+
+  useLayoutEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry.contentRect.width
+      if (width > 0) setContainerWidth(width)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   function goTo(i: number) {
     const next = slides[Math.min(slides.length - 1, Math.max(0, i))]
     if (next) onPageChange(next.page)
+  }
+
+  if (!slide) {
+    return (
+      <section aria-label="Slide bài giảng" className="flex min-w-0 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card p-10 text-center">
+        <FileText className="size-6 text-muted-foreground" aria-hidden="true" />
+        <p className="text-sm text-muted-foreground">Bộ slide này chưa có trang nào.</p>
+      </section>
+    )
   }
 
   return (
@@ -44,64 +71,90 @@ export function SlidePanel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
           <FileText className="size-4 shrink-0" aria-hidden="true" />
-          <span className="truncate">{LESSON.session}</span>
+          <span className="truncate">{deck.title}</span>
           <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground">
             {index + 1}/{slides.length}
           </span>
         </div>
 
-        <div
-          role="group"
-          aria-label="Phóng to, thu nhỏ slide"
-          className="flex items-center gap-1 rounded-lg border border-border bg-card p-1"
-        >
-          <IconButton
-            label="Thu nhỏ slide"
-            disabled={zoomIndex === 0}
-            onClick={() => onZoomIndexChange(zoomIndex - 1)}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenLibrary}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground lg:hidden"
           >
-            <ZoomOut className="size-4" aria-hidden="true" />
-          </IconButton>
-          <span className="min-w-11 text-center text-xs font-medium tabular-nums text-muted-foreground" aria-live="polite">
-            {Math.round(zoom * 100)}%
-          </span>
-          <IconButton
-            label="Phóng to slide"
-            disabled={zoomIndex === ZOOM_STEPS.length - 1}
-            onClick={() => onZoomIndexChange(zoomIndex + 1)}
+            <Library className="size-4" aria-hidden="true" />
+            Thư viện
+          </button>
+
+          <div
+            role="group"
+            aria-label="Phóng to, thu nhỏ slide"
+            className="flex items-center gap-1 rounded-lg border border-border bg-card p-1"
           >
-            <ZoomIn className="size-4" aria-hidden="true" />
-          </IconButton>
-          <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
-          <IconButton
-            label="Đặt lại cỡ mặc định"
-            disabled={zoomIndex === DEFAULT_ZOOM_INDEX}
-            onClick={() => onZoomIndexChange(DEFAULT_ZOOM_INDEX)}
-          >
-            <RotateCcw className="size-4" aria-hidden="true" />
-          </IconButton>
+            <IconButton
+              label="Thu nhỏ slide"
+              disabled={zoomIndex === 0}
+              onClick={() => onZoomIndexChange(zoomIndex - 1)}
+            >
+              <ZoomOut className="size-4" aria-hidden="true" />
+            </IconButton>
+            <span
+              className="min-w-11 text-center text-xs font-medium tabular-nums text-muted-foreground"
+              aria-live="polite"
+            >
+              {Math.round(zoom * 100)}%
+            </span>
+            <IconButton
+              label="Phóng to slide"
+              disabled={zoomIndex === ZOOM_STEPS.length - 1}
+              onClick={() => onZoomIndexChange(zoomIndex + 1)}
+            >
+              <ZoomIn className="size-4" aria-hidden="true" />
+            </IconButton>
+            <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+            <IconButton
+              label="Đặt lại cỡ mặc định"
+              disabled={zoomIndex === DEFAULT_ZOOM_INDEX}
+              onClick={() => onZoomIndexChange(DEFAULT_ZOOM_INDEX)}
+            >
+              <RotateCcw className="size-4" aria-hidden="true" />
+            </IconButton>
+          </div>
         </div>
       </div>
 
       <div
         ref={canvasRef}
         className={cn(
-          "overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-card shadow-sm",
+          "overflow-auto rounded-xl border border-border bg-card shadow-sm",
           wide ? "h-[clamp(340px,58svh,620px)]" : "h-[clamp(320px,46svh,520px)]",
         )}
       >
-        <div className="p-6 md:p-8" style={{ zoom }}>
-          <p className="text-xs font-medium uppercase tracking-wide text-primary">Trang {slide.page}</p>
-          <h2 className="mt-2 text-balance text-2xl font-semibold leading-snug text-card-foreground">{slide.title}</h2>
-          <ul className="mt-5 flex flex-col gap-3">
-            {slide.bullets.map((b) => (
-              <li key={b} className="flex gap-3 text-base leading-relaxed text-muted-foreground">
-                <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                <span className="text-pretty">{b}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {deck.kind === "pdf" ? (
+          <div className="p-4" style={{ width: `${Math.max(100, zoom * 100)}%` }}>
+            <PdfPageView
+              fileUrl={pdfFileUrl(deck.id)}
+              page={slide.page}
+              renderWidth={Math.max(320, (containerWidth - 32) * zoom)}
+            />
+          </div>
+        ) : (
+          <div className="origin-top-left p-6 md:p-8" style={{ width: `${100 / zoom}%`, transform: `scale(${zoom})` }}>
+            <p className="text-xs font-medium uppercase tracking-wide text-primary">Trang {slide.page}</p>
+            <h2 className="mt-2 text-balance text-2xl font-semibold leading-snug text-card-foreground">
+              {slide.title}
+            </h2>
+            <ul className="mt-5 flex flex-col gap-3">
+              {slide.bullets.map((b) => (
+                <li key={b} className="flex gap-3 text-base leading-relaxed text-muted-foreground">
+                  <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-primary" />
+                  <span className="text-pretty">{b}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
@@ -116,7 +169,7 @@ export function SlidePanel({
           id="slide-range"
           type="range"
           min={0}
-          max={slides.length - 1}
+          max={Math.max(0, slides.length - 1)}
           step={1}
           value={index}
           onChange={(e) => goTo(Number(e.target.value))}

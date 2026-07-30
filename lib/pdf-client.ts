@@ -1,0 +1,88 @@
+"use client"
+
+import type { PDFDocumentProxy } from "pdfjs-dist"
+import { outlineFromPageText } from "@/lib/deck-types"
+import type { Slide } from "@/lib/tutor-data"
+
+type PdfModule = typeof import("pdfjs-dist")
+
+let modulePromise: Promise<PdfModule> | null = null
+
+async function loadPdfjs() {
+  if (!modulePromise) {
+    modulePromise = import("pdfjs-dist").then((mod) => {
+      mod.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs"
+      return mod
+    })
+  }
+  return modulePromise
+}
+
+export async function openPdf(source: ArrayBuffer | string): Promise<PDFDocumentProxy> {
+  const pdfjs = await loadPdfjs()
+  const params = typeof source === "string" ? { url: source } : { data: source }
+  return pdfjs.getDocument(params).promise
+}
+
+/**
+ * Extracts a per-page text outline. Text items are grouped into lines by their
+ * vertical position so the first line becomes the slide title.
+ */
+export async function extractOutline(doc: PDFDocumentProxy, onProgress?: (done: number, total: number) => void) {
+  const slides: Slide[] = []
+
+  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+    const page = await doc.getPage(pageNumber)
+    const content = await page.getTextContent()
+
+    const rows = new Map<number, { x: number; text: string }[]>()
+    for (const item of content.items) {
+      if (!("str" in item) || !item.str.trim()) continue
+      const y = Math.round((item.transform?.[5] ?? 0) / 4)
+      const row = rows.get(y) ?? []
+      row.push({ x: item.transform?.[4] ?? 0, text: item.str })
+      rows.set(y, row)
+    }
+
+    const lines = [...rows.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([, row]) =>
+        row
+          .sort((a, b) => a.x - b.x)
+          .map((r) => r.text)
+          .join(" "),
+      )
+
+    slides.push(outlineFromPageText(pageNumber, lines))
+    page.cleanup()
+    onProgress?.(pageNumber, doc.numPages)
+  }
+
+  return slides
+}
+
+/** Renders one page into a canvas at the given CSS width, honouring devicePixelRatio. */
+export async function renderPageToCanvas(
+  doc: PDFDocumentProxy,
+  pageNumber: number,
+  canvas: HTMLCanvasElement,
+  cssWidth: number,
+) {
+  const page = await doc.getPage(pageNumber)
+  const base = page.getViewport({ scale: 1 })
+  const dpr = Math.min(2, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1)
+  const scale = (cssWidth / base.width) * dpr
+  const viewport = page.getViewport({ scale })
+
+  canvas.width = Math.floor(viewport.width)
+  canvas.height = Math.floor(viewport.height)
+  canvas.style.width = "100%"
+  canvas.style.height = "auto"
+
+  const context = canvas.getContext("2d")
+  if (!context) return
+
+  context.clearRect(0, 0, canvas.width, canvas.height)
+  await page.render({ canvasContext: context, viewport, canvas }).promise
+  page.cleanup()
+}

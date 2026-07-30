@@ -107,6 +107,17 @@ export const LESSON = {
   ] satisfies Slide[],
 }
 
+export const SAMPLE_DECK = {
+  id: "sample",
+  title: LESSON.session,
+  course: LESSON.course,
+  kind: "sample" as const,
+  pageCount: LESSON.slides.length,
+  firstPage: LESSON.slides[0].page,
+  createdAt: "1970-01-01T00:00:00.000Z",
+  outline: LESSON.slides,
+}
+
 const S = (id: string, question: string, page: number, tag: Suggestion["tag"]): Suggestion => ({
   id,
   question,
