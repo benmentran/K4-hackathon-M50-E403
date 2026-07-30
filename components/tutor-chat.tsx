@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ArrowUp, Sparkles, X, BookOpen, Bot, User } from "lucide-react"
+import { ArrowUp, Sparkles, X, BookOpen, Bot, User, PanelRightClose } from "lucide-react"
 import { ANSWERS, FALLBACK, OPENING_SUGGESTIONS, type Suggestion, type Turn } from "@/lib/tutor-data"
 
 const INITIAL: Turn[] = [
@@ -20,7 +20,13 @@ const INITIAL: Turn[] = [
   },
 ]
 
-export function TutorChat({ onPageChange }: { onPageChange: (page: number) => void }) {
+export function TutorChat({
+  onPageChange,
+  onCollapse,
+}: {
+  onPageChange: (page: number) => void
+  onCollapse: () => void
+}) {
   const [turns, setTurns] = useState<Turn[]>(INITIAL)
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({})
   const [draft, setDraft] = useState("")
@@ -69,10 +75,19 @@ export function TutorChat({ onPageChange }: { onPageChange: (page: number) => vo
         <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Bot className="size-4" aria-hidden="true" />
         </span>
-        <div className="flex flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-semibold text-card-foreground">VLearn AI Tutor</span>
           <span className="text-xs text-muted-foreground">Tự gợi ý câu hỏi tiếp theo</span>
         </div>
+        <button
+          type="button"
+          onClick={onCollapse}
+          title="Thu nhỏ tutor"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <PanelRightClose className="size-4" aria-hidden="true" />
+          <span className="sr-only">Thu nhỏ tutor để phóng to slide</span>
+        </button>
       </header>
 
       <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">

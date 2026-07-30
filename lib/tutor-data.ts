@@ -24,6 +24,24 @@ export const LESSON = {
   session: "Buổi 4 — Transformer & Attention",
   slides: [
     {
+      page: 5,
+      title: "Vì sao cần Transformer?",
+      bullets: [
+        "Dịch máy trước 2017 dựa trên seq2seq + RNN, chất lượng giảm với câu dài",
+        'Bài báo "Attention is All You Need" bỏ hẳn recurrence',
+        "Kết quả: train nhanh hơn nhiều lần trên cùng phần cứng",
+      ],
+    },
+    {
+      page: 6,
+      title: "Tổng quan kiến trúc",
+      bullets: [
+        "Gồm khối Encoder (hiểu đầu vào) và Decoder (sinh đầu ra)",
+        "Mỗi khối lặp lại N lần (bài báo gốc: N = 6)",
+        "Thành phần lõi: attention + feed-forward + residual + layer norm",
+      ],
+    },
+    {
       page: 7,
       title: "Attention là gì?",
       bullets: [
@@ -51,12 +69,39 @@ export const LESSON = {
       ],
     },
     {
+      page: 10,
+      title: "Encoder block",
+      bullets: [
+        "Self-attention → cộng residual → layer norm",
+        "Feed-forward 2 lớp (mở rộng 4× rồi thu lại)",
+        "Không có masking: mọi token thấy toàn bộ chuỗi",
+      ],
+    },
+    {
+      page: 11,
+      title: "Decoder & masked attention",
+      bullets: [
+        "Masked self-attention: token chỉ thấy các token phía trước",
+        "Cross-attention lấy K, V từ encoder",
+        "Nhờ masking mà mô hình sinh văn bản được từng token",
+      ],
+    },
+    {
       page: 12,
       title: "So sánh với RNN / LSTM",
       bullets: [
         "RNN xử lý tuần tự → khó song song hoá",
         "Transformer song song hoá toàn bộ chuỗi trên GPU",
         "Chi phí attention tăng theo O(n²) với độ dài chuỗi",
+      ],
+    },
+    {
+      page: 13,
+      title: "Tóm tắt buổi 4",
+      bullets: [
+        "Attention = trung bình có trọng số theo mức liên quan",
+        "Multi-head + positional encoding là hai mảnh ghép bắt buộc",
+        "Bài tập: cài attention một head bằng NumPy cho câu 5 token",
       ],
     },
   ] satisfies Slide[],
