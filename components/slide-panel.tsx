@@ -90,10 +90,7 @@ export function SlidePanel({
           wide ? "h-[clamp(340px,58svh,620px)]" : "h-[clamp(320px,46svh,520px)]",
         )}
       >
-        <div
-          className="origin-top-left p-6 md:p-8"
-          style={{ width: `${100 / zoom}%`, transform: `scale(${zoom})` }}
-        >
+        <div className="p-6 md:p-8" style={{ zoom }}>
           <p className="text-xs font-medium uppercase tracking-wide text-primary">Trang {slide.page}</p>
           <h2 className="mt-2 text-balance text-2xl font-semibold leading-snug text-card-foreground">{slide.title}</h2>
           <ul className="mt-5 flex flex-col gap-3">
