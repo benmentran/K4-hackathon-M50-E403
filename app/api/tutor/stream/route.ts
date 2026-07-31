@@ -167,9 +167,9 @@ export async function POST(req: Request) {
         )
     }
 
-    let body: AskBody
+    let payload: AskBody
     try {
-        body = (await req.json()) as AskBody
+        payload = (await req.json()) as AskBody
     } catch {
         return new Response(JSON.stringify({ error: "Body không phải JSON hợp lệ." }), {
             status: 400,
@@ -177,7 +177,7 @@ export async function POST(req: Request) {
         })
     }
 
-    const question = body.question?.trim()
+    const question = payload.question?.trim()
     if (!question) {
         return new Response(JSON.stringify({ error: "Câu hỏi trống." }), {
             status: 400,
@@ -185,8 +185,8 @@ export async function POST(req: Request) {
         })
     }
 
-    const currentPage = typeof body.page === "number" && body.page > 0 ? body.page : null
-    const deckId = body.deck?.id ?? "unknown"
+    const currentPage = typeof payload.page === "number" && payload.page > 0 ? payload.page : null
+    const deckId = payload.deck?.id ?? "unknown"
 
     // ── Anti-cheat (GOAL.md §6) ────────────────────────────────────────────────
     const ragForIntegrity = await retrieveRagContext({ deckId, question, currentPage })
@@ -211,17 +211,17 @@ export async function POST(req: Request) {
 
     // ── RAG retrieval ────────────────────────────────────────────────────────
     const rag = buildRagPrompt(ragForIntegrity)
-    const systemInstruction = buildSystemPrompt(body.deck ?? undefined, currentPage, rag)
+    const systemInstruction = buildSystemPrompt(payload.deck ?? undefined, currentPage, rag)
 
     try {
         let streamBody: ReadableStream<Uint8Array> | null = null
 
         if (provider === "mistral") {
-            const body = await streamMistral(apiKey, systemInstruction, question, body.history)
-            if (body) streamBody = body
+            const streamResponse = await streamMistral(apiKey, systemInstruction, question, payload.history)
+            if (streamResponse) streamBody = streamResponse
         } else if (provider === "openrouter") {
-            const body = await streamOpenRouter(apiKey, systemInstruction, question, body.history)
-            if (body) streamBody = body
+            const streamResponse = await streamOpenRouter(apiKey, systemInstruction, question, payload.history)
+            if (streamResponse) streamBody = streamResponse
         }
 
         if (streamBody) {
