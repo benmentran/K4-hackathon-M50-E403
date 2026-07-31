@@ -9,6 +9,13 @@ const PREFIX = "decks/"
 const MAX_BYTES = 25 * 1024 * 1024
 
 export async function GET() {
+  // Check if Vercel Blob is configured
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    // Return empty list gracefully — uploads won't persist but app won't crash
+    console.warn("[v0] Vercel Blob not configured — returning empty deck list")
+    return NextResponse.json({ decks: [], warning: "Blob storage not configured" })
+  }
+
   try {
     const { blobs } = await list({ prefix: PREFIX })
     const metaBlobs = blobs.filter((b) => b.pathname.endsWith("/meta.json"))

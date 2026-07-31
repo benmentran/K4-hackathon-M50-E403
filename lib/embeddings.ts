@@ -1,10 +1,15 @@
 /**
- * Embeddings via OpenRouter.
- * Uses text-embedding-3-small compatible model via OpenRouter.
- * Falls back to deterministic mock vectors when OPENROUTER_API_KEY is missing.
+ * Embeddings via Mistral (primary) or OpenRouter (fallback).
+ * Falls back to deterministic mock vectors when no API key is available.
+ *
+ * Vector dimensions:
+ *   - Mistral: 1024d → padded to 1536d for Qdrant
+ *   - OpenRouter: 1536d
+ *   - Mock: 1536d
  */
 
-const EMBEDDING_MODEL = "openai/text-embedding-3-small"
+const MISTRAL_EMBED_MODEL = "mistral-embed"
+const OPENROUTER_EMBED_MODEL = "openai/text-embedding-3-small"
 const VECTOR_SIZE = 1536
 
 type EmbeddingResult = {
@@ -13,47 +18,88 @@ type EmbeddingResult = {
   usedMock: boolean
 }
 
+/** Pad 1024d Mistral vectors to 1536d for Qdrant compatibility */
+function padTo1536(vector: number[]): number[] {
+  if (vector.length === VECTOR_SIZE) return vector
+  const padded = new Array(VECTOR_SIZE).fill(0)
+  for (let i = 0; i < vector.length; i++) {
+    padded[i] = vector[i]
+  }
+  return padded
+}
+
 export async function embedTexts(texts: string[]): Promise<EmbeddingResult[]> {
   if (texts.length === 0) return []
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) {
-    return texts.map((t) => ({
-      vector: mockVector(t),
-      model: "mock-fnv",
-      usedMock: true,
-    }))
-  }
 
-  const res = await fetch("https://openrouter.ai/api/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: texts.map((t) => t.slice(0, 8000)),
-    }),
-  })
+  // Try Mistral first (primary) - uses "input" (singular), returns 1024d
+  const mistralKey = process.env.MISTRAL_API_KEY
+  if (mistralKey) {
+    try {
+      const res = await fetch("https://api.mistral.ai/v1/embeddings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${mistralKey}`,
+        },
+        body: JSON.stringify({
+          model: MISTRAL_EMBED_MODEL,
+          input: texts.map((t) => t.slice(0, 8000)), // Mistral uses "input", not "inputs"
+        }),
+      })
 
-  if (!res.ok) {
-    // Fallback to mock on auth/billing errors
-    if (res.status === 401 || res.status === 402 || res.status === 403) {
-      console.warn(`[embeddings] OpenRouter ${res.status} — falling back to mock vectors`)
-      return texts.map((t) => ({
-        vector: mockVector(t),
-        model: "mock-fnv",
-        usedMock: true,
-      }))
+      if (res.ok) {
+        const data = (await res.json()) as { data: { embedding: number[]; index: number }[] }
+        return data.data
+          .sort((a, b) => a.index - b.index)
+          .map((d) => ({
+            vector: padTo1536(d.embedding),
+            model: MISTRAL_EMBED_MODEL,
+            usedMock: false,
+          }))
+      }
+      const errText = await res.text().catch(() => "")
+      console.warn(`[embeddings] Mistral ${res.status}: ${errText.slice(0, 100)}`)
+    } catch (err) {
+      console.warn("[embeddings] Mistral failed:", err)
     }
-    const errText = await res.text().catch(() => "")
-    throw new Error(`OpenRouter embeddings ${res.status}: ${errText.slice(0, 200)}`)
   }
 
-  const data = (await res.json()) as { data: { embedding: number[]; index: number }[] }
-  return data.data
-    .sort((a, b) => a.index - b.index)
-    .map((d) => ({ vector: d.embedding, model: EMBEDDING_MODEL, usedMock: false }))
+  // Try OpenRouter as fallback
+  const openrouterKey = process.env.OPENROUTER_API_KEY
+  if (openrouterKey) {
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/embeddings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openrouterKey}`,
+        },
+        body: JSON.stringify({
+          model: OPENROUTER_EMBED_MODEL,
+          input: texts.map((t) => t.slice(0, 8000)),
+        }),
+      })
+
+      if (res.ok) {
+        const data = (await res.json()) as { data: { embedding: number[]; index: number }[] }
+        return data.data
+          .sort((a, b) => a.index - b.index)
+          .map((d) => ({ vector: d.embedding, model: OPENROUTER_EMBED_MODEL, usedMock: false }))
+      }
+      const errText = await res.text().catch(() => "")
+      console.warn(`[embeddings] OpenRouter ${res.status}: ${errText.slice(0, 100)}`)
+    } catch (err) {
+      console.warn("[embeddings] OpenRouter failed:", err)
+    }
+  }
+
+  // Fallback to mock vectors
+  console.warn("[embeddings] No API keys available — using mock vectors")
+  return texts.map((t) => ({
+    vector: mockVector(t),
+    model: "mock-fnv",
+    usedMock: true,
+  }))
 }
 
 export async function embedText(text: string): Promise<EmbeddingResult> {

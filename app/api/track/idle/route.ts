@@ -17,6 +17,13 @@
 import { NextResponse } from "next/server"
 import { buildRagPrompt, retrieveRagContext } from "@/lib/rag"
 import { checkAcademicIntegrity } from "@/lib/tools/anti-cheat"
+import {
+  cacheKey,
+  isDebounced,
+  markDebounced,
+  getCached,
+  setCached,
+} from "@/lib/suggestion-cache"
 
 export const runtime = "nodejs"
 
@@ -39,41 +46,6 @@ function getApiKey(p: Provider): string | undefined {
   if (p === "mistral") return process.env.MISTRAL_API_KEY
   if (p === "openrouter") return process.env.OPENROUTER_API_KEY
   return process.env.GEMINI_API_KEY
-}
-
-// ── Module-level suggestion cache ────────────────────────────────────────────
-type CachedSuggestion = { questions: string[]; generatedAt: number }
-const _cache = new Map<string, CachedSuggestion>()
-const SUGGESTION_TTL_MS = 5 * 60 * 1000 // 5 minutes per slide
-const DEBOUNCE_KEY_TTL_MS = 30 * 1000 // don't regenerate within 30s even if called
-
-const _debounce = new Map<string, number>()
-
-function cacheKey(deckId: string, page: number) {
-  return `${deckId}::${page}`
-}
-
-function isDebounced(key: string): boolean {
-  const last = _debounce.get(key) ?? 0
-  return Date.now() - last < DEBOUNCE_KEY_TTL_MS
-}
-
-function markDebounced(key: string) {
-  _debounce.set(key, Date.now())
-}
-
-function getCached(key: string): string[] | null {
-  const entry = _cache.get(key)
-  if (!entry) return null
-  if (Date.now() - entry.generatedAt > SUGGESTION_TTL_MS) {
-    _cache.delete(key)
-    return null
-  }
-  return entry.questions
-}
-
-function setCached(key: string, questions: string[]) {
-  _cache.set(key, { questions, generatedAt: Date.now() })
 }
 
 function getApiBase(provider: Provider): { base: string; model: string } {
@@ -171,7 +143,7 @@ export async function POST(req: Request) {
   if (isDebounced(key)) {
     const cached = getCached(key)
     return NextResponse.json({
-      suggestions: cached ?? [],
+      suggestions: cached?.questions ?? [],
       source: "debounced",
       page,
     })
@@ -181,9 +153,10 @@ export async function POST(req: Request) {
   const cached = getCached(key)
   if (cached) {
     return NextResponse.json({
-      suggestions: cached,
+      suggestions: cached.questions,
       source: "cache",
       page,
+      citations: cached.citations,
     })
   }
 
@@ -200,9 +173,19 @@ export async function POST(req: Request) {
     slideContext,
   )
   if (integrity.is_flagged) {
-    // Don't generate suggestions for flagged pages — return empty
-    setCached(key, [])
-    return NextResponse.json({ suggestions: [], source: "flagged", page, reason: integrity.reason })
+    // Trả về câu hỏi gợi ý mở thay vì empty — lịch sự redirect
+    const safeQuestions = [
+      "Bạn đang thắc mắc về phần nào trong slide này?",
+      "Hãy thử đặt câu hỏi cụ thể hơn về nội dung đang học nhé!",
+      "Bạn có muốn ôn lại khái niệm chính trong slide không?",
+    ]
+    setCached(key, safeQuestions)
+    return NextResponse.json({
+      suggestions: safeQuestions,
+      source: "safe_redirect",
+      page,
+      reason: integrity.reason,
+    })
   }
 
   // ── LLM: generate 3–5 follow-up questions ─────────────────────────────────
@@ -217,7 +200,7 @@ Ngữ cảnh slide:\n${slideContext}${transcriptContext ? `\nBổ sung:\n${trans
 
   try {
     const questions = await callLLMSuggestions(provider, apiKey, systemInstruction)
-    setCached(key, questions)
+    setCached(key, questions, citationPages)
     return NextResponse.json({
       suggestions: questions,
       source: "generated",

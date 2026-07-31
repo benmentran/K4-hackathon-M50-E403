@@ -8,6 +8,7 @@
  *       - asking for direct exam/homework answers
  *       - completely off-topic from the current slide
  *       - prompt injection attempts
+ *       - general chat / personal questions unrelated to learning
  *
  * 2. logFlaggedInteraction()   — persists flagged events to data/flagged-log.jsonl
  *                                so instructors can audit them.
@@ -27,6 +28,76 @@ export type IntegrityResult = {
 }
 
 /**
+ * Patterns for questions that are clearly off-topic / not learning-related.
+ * These questions should be politely declined regardless of slide context.
+ */
+const OFF_TOPIC_PATTERNS = [
+  // Time/date unrelated to course content
+  /ngày\s*(mai|mùng|hôm qua|thứ|mới)/i,
+  /mấy\s*giờ|rời\s*giờ|giờ\s*(hiện|là)/i,
+  /hôm\s*(nay|nào)|tháng\s*nào/i,
+  /năm\s*(nay|nào)|ngày\s*sinh/i,
+
+  // General chat / greetings / small talk
+  /^(chào|hi|hello|hey|xin\s*chào)/i,
+  /^(cảm\s*ơn|camon|cám\s*ơn|cảm ơn)/i,
+  /^(tạm\s*biệt|bye|tạm\s*nói\s*sau)/i,
+  /bạn\s+(khỏe|ở\s*đâu|làm\s*gì)/i,
+
+  // Personal / lifestyle questions
+  /bạn\s+(tên|gọi|là)\s*(gì|ai)/i,
+  /(mưa|nắng|thời\s*tiết)\s*(hôm|ngày| mai)/i,
+  /món\s*(ăn|vn)|quán\s*(cà\s*phê|cafe|nhậu)/i,
+
+  // Math / calculator requests
+  /tính\s*(giúp|tôi)\s*[\d+\-*/=]/i,
+  /=\s*[\d+\-*/()]+/i,
+  /cộng\s*(với|dương)|trừ\s*(đi|bớt)/i,
+
+  // Non-learning questions
+  /tỷ\s*lệ\s*(thắng|chiến\s*thắng|score)/i,
+  /(trận|đội|tuyển)\s*(nào|bóng\s*đá)/i,
+  /giá\s*(vàng|xu|bitcoin|crypto)/i,
+  /tin\s*(tức|mới|nóng)\s*(hôm|nay)/i,
+]
+
+/**
+ * Check if a question is "gibberish" — only random characters / no real words.
+ * Catches: "hgfghgfgf", "asdfasdf", "aaaa", "123456", "....", "@#$%^"
+ */
+function isGibberish(question: string): boolean {
+  const stripped = question.replace(/[\s\u200b\u200c\u200d\ufeff]/g, "")
+  if (stripped.length < 3) return true
+
+  // Strip all Vietnamese diacritics/tone marks to count base letters
+  const normalized = stripped
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+  const letters = normalized.replace(/[^a-zA-ZÀ-ỹ]/g, "")
+  const onlySpecial = normalized.replace(/[a-zA-ZÀ-ỹ]/g, "")
+
+  // Only special chars (no letters at all)
+  if (letters.length === 0 && stripped.length > 0) return true
+
+  // Same character repeated 5+ times: "aaaaaaa", "1111111"
+  if (/^(.)\1{4,}$/.test(stripped)) return true
+
+  // Same 2-char pattern repeated: "ababab", "121212"
+  if (/^(..)\1{3,}$/.test(stripped)) return true
+
+  // Keyboard mashing: too many consecutive consonants with no vowels
+  const vowels = stripped.match(/[aeiouyăâêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/gi)
+  const vowelRatio = vowels ? vowels.length / letters.length : 0
+  if (letters.length >= 6 && vowelRatio < 0.15) return true
+
+  // Mostly repeated keystrokes / no Word boundaries
+  if (letters.length > 0 && onlySpecial.length / letters.length > 0.6) return true
+
+  return false
+}
+
+/**
  * Lightweight heuristic checker — no LLM needed.
  * For production, replace with a real LLM call using the current provider.
  */
@@ -35,7 +106,7 @@ export async function checkAcademicIntegrity(
   currentPage: number | null,
   slideContext: string,
 ): Promise<IntegrityResult> {
-  const q = question.toLowerCase()
+  const q = question.toLowerCase().trim()
 
   // ── Prompt injection patterns ───────────────────────────────────────────────
   const injectionPatterns = [
@@ -43,7 +114,7 @@ export async function checkAcademicIntegrity(
     /^(ignore|disregard|forget)\s+(previous|system|instructions)/i,
     /^(bạn\s+là\s+|you\s+are\s+now\s+)/i,
     /^(act\s+as|pretend\s+to\s+be)/i,
-    /^dưới\s+vai\s+trò\s+/i,
+    /^dưới\s+vai\s*trò\s+/i,
   ]
   for (const pat of injectionPatterns) {
     if (pat.test(q)) {
@@ -58,7 +129,7 @@ export async function checkAcademicIntegrity(
   // ── Direct exam / graded-assignment patterns ───────────────────────────────
   const examPatterns = [
     /đáp án\s+(bài|đề|kiểm\s*tra|quiz|thi|exam)/i,
-    /giải\s+(bài|đề|toán|bài\s+tập)\s+[aăâáàẳẵẳắấậ]/i,
+    /giải\s+(bài|đề|toán|bài\s*tập)\s+[aăâáàẳẵẳắấậ]/i,
     /làm\s+(thay|bài|hộ)\s+(tôi|bạn|mình)/i,
     /chép\s+(bài|đáp án)/i,
     /bài\s+(kiểm\s*tra|quiz|thi)\s+(số|mấy)/i,
@@ -71,6 +142,26 @@ export async function checkAcademicIntegrity(
         reason: "Câu hỏi yêu cầu đáp án bài kiểm tra / bài tập — không đưa đáp án trực tiếp.",
         risk_level: "high",
       }
+    }
+  }
+
+  // ── Off-topic: clearly not learning-related ─────────────────────────────────
+  for (const pat of OFF_TOPIC_PATTERNS) {
+    if (pat.test(q)) {
+      return {
+        is_flagged: true,
+        reason: "Câu hỏi không liên quan đến nội dung bài học — vui lòng hỏi về slide hoặc chủ đề đang học nhé.",
+        risk_level: "low",
+      }
+    }
+  }
+
+  // ── Gibberish: random characters, no real words ────────────────────────────
+  if (isGibberish(question)) {
+    return {
+      is_flagged: true,
+      reason: "Câu hỏi không có nội dung rõ ràng — vui lòng nhập câu hỏi bằng tiếng Việt để mình hỗ trợ nhé.",
+      risk_level: "low",
     }
   }
 

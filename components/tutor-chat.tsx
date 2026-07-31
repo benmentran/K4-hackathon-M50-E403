@@ -109,9 +109,13 @@ export function TutorChat({
   const endRef = useRef<HTMLDivElement>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Store pending idle suggestions until answer completes
+  const pendingIdleRef = useRef<string[]>([])
+
   // ── Idle detection: reset timer on page change ───────────────────────────────
   useEffect(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    pendingIdleRef.current = [] // Clear pending on page change
     if (deck.kind === "pdf" && currentPage && !idlePending) {
       idleTimerRef.current = setTimeout(() => {
         void triggerIdle(deck.id, currentPage)
@@ -134,7 +138,11 @@ export function TutorChat({
         const data = (await res.json()) as IdleSuggestion
         const items = data.suggestions ?? data.questions ?? []
         if (items.length) {
-          setIdleSuggestions(items)
+          pendingIdleRef.current = items
+          // If no answer pending, show directly; otherwise will show after answer
+          if (!thinking) {
+            setIdleSuggestions(items)
+          }
         }
       }
     } catch {
@@ -146,8 +154,18 @@ export function TutorChat({
 
   // ── Show idle suggestions as a dismissible banner above the input ────────────
   function pickIdleSuggestion(q: string) {
+    const currentIdle = [...idleSuggestions] // Keep copy for reference
     setIdleSuggestions([])
-    void ask(q)
+    void ask(q, undefined, currentIdle)
+  }
+
+  // After answer comes back, show pending idle suggestions
+  function showPendingIdleSuggestions() {
+    const pending = pendingIdleRef.current
+    if (pending.length > 0) {
+      setIdleSuggestions(pending)
+      pendingIdleRef.current = []
+    }
   }
 
   useEffect(() => {
@@ -176,12 +194,12 @@ export function TutorChat({
     }
   }
 
-  async function ask(question: string, id?: string) {
+  async function ask(question: string, id?: string, fromIdle?: string[]) {
     const stamp = Date.now()
     setTurns((prev) => [...prev, { id: `u${stamp}`, role: "user", content: question }])
     setThinking(true)
     setError(null)
-    setIdleSuggestions([])
+    setIdleSuggestions([]) // Clear idle suggestions when asking
 
     const presetAnswer =
       usePreset
@@ -218,6 +236,10 @@ export function TutorChat({
         typeof data.page === "number" && data.page > 0 ? data.page : presetAnswer?.page ?? 1
 
       onPageChange(answerPage)
+
+      // After answer, show pending idle suggestions
+      showPendingIdleSuggestions()
+      
       setTurns((prev) => [
         ...prev,
         {
@@ -309,11 +331,18 @@ export function TutorChat({
                   </div>
                 </div>
 
-                {turn.suggestions && turn.id === lastTurn.id && !dismissed[turn.id] && !thinking ? (
+                {((turn.suggestions?.length && turn.id === lastTurn.id && !dismissed[turn.id] && !thinking) || (idleSuggestions.length > 0 && !thinking)) ? (
                   <SuggestionBlock
-                    suggestions={turn.suggestions}
+                    suggestions={
+                      turn.suggestions?.length
+                        ? turn.suggestions
+                        : idleSuggestions.map((q, i) => ({ id: `idle-${i}`, question: q, page: currentPage ?? 1, tag: "Gợi ý" }))
+                    }
                     onPick={(s) => ask(s.question, s.id)}
-                    onDismiss={() => setDismissed((d) => ({ ...d, [turn.id]: true }))}
+                    onDismiss={() => {
+                      setDismissed((d) => ({ ...d, [turn.id]: true }))
+                      setIdleSuggestions([])
+                    }}
                   />
                 ) : null}
               </div>
@@ -333,27 +362,8 @@ export function TutorChat({
           </p>
         ) : null}
 
-        {idleSuggestions.length > 0 ? (
-          <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-800 dark:bg-violet-950/40">
-            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-violet-700 dark:text-violet-300">
-              <Sparkles className="size-3.5" aria-hidden="true" />
-              Gợi ý sau khi dừng lại 15s
-            </div>
-            <ul className="flex flex-col gap-1.5">
-              {idleSuggestions.map((q, i) => (
-                <li key={i}>
-                  <button
-                    type="button"
-                    onClick={() => pickIdleSuggestion(q)}
-                    className="w-full text-left text-sm text-violet-800 dark:text-violet-200 hover:underline"
-                  >
-                    → {q}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        {/* Idle suggestions banner - only show when no SuggestionBlock is showing */}
+        {idleSuggestions.length > 0 && !turns.some(t => t.suggestions && t.id === turns[turns.length - 1].id) && !thinking ? null : null}
 
         <div ref={endRef} />
       </div>
