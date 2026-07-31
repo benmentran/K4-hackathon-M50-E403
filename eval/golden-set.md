@@ -2,7 +2,7 @@
 
 | test_id | nguồn | input | output mong đợi |
 |---|---|---|---|
-| G-01 | chat_log | "giải thích quy trình HCD" | trả lời được và gợi mở câu hỏi follow-up |
+| G-01 | tự tạo | "giải thích mô hình Double Diamond" | trả lời được và gợi mở câu hỏi follow-up |
 | G-02 | chat_log | "giải thích Quick Problem Card" | trả lời được và gợi mở câu hỏi follow-up |
 | G-03 | tự tạo | "giải thích slide này" (slide title) | nhận slide ít nội dung; gợi ý sang slide có nội dung thay vì bịa |
 | G-04 | chat_log | "tóm tắt sờ lai này" | hiểu "slide", tóm tắt ngắn gọn, follow-up bám nội dung slide |
