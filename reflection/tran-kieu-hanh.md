@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Reflection — Trần Kiều Hạnh (2A202601760)
 
 ## Vai trò trong nhóm
@@ -37,4 +36,4 @@ Qua công việc này, tôi học được rằng việc kết hợp **dữ li�
 - **Phần đã làm:** Đếm và kiểm tra các pattern trong chatlog, chuẩn bị số liệu impact cho spec và eval.
 - **AI hỗ trợ:** Hỗ trợ kiểm tra quy tắc đếm, tìm các trường dữ liệu liên quan và phát hiện chỗ cần ghi rõ phương pháp.
 - **Bài học từ case fail:** Số liệu chỉ có giá trị khi người khác có thể chạy lại cách đếm; cần tách rõ quan sát từ dữ liệu với suy luận về nguyên nhân.
->>>>>>> c26b79edf5c083cc70239ed9011a528cab8a2cf9
+
