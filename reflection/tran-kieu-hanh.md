@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Reflection — Trần Kiều Hạnh (2A202601760)
 
 ## Vai trò trong nhóm
@@ -28,3 +29,12 @@ AI cũng hỗ trợ diễn giải các số liệu thành những insight ban đ
 Điều tôi rút ra là **không nên chỉ dựa vào một nguồn dữ liệu để đưa ra quyết định**. Nếu chỉ nhìn vào chatlog, nhóm chỉ biết hệ thống hiện chưa sinh `follow_ups`. Ngược lại, nếu chỉ khảo sát người dùng thì chỉ biết đây là một nhu cầu được mong muốn. Khi kết hợp cả hai nguồn dữ liệu, nhóm mới có đủ bằng chứng rằng đây vừa là vấn đề đang tồn tại trong sản phẩm, vừa là tính năng người dùng thực sự cần.
 
 Qua công việc này, tôi học được rằng việc kết hợp **dữ liệu hành vi thực tế** và **khảo sát người dùng** giúp các quyết định trong AI Spec có cơ sở thuyết phục hơn, thay vì chỉ dựa trên cảm nhận hoặc một vài ví dụ riêng lẻ.
+=======
+# Reflection — Trần Kiều Hạnh
+
+- **Mã HV:** 2A202601760
+- **Vai trò:** Mining số liệu
+- **Phần đã làm:** Đếm và kiểm tra các pattern trong chatlog, chuẩn bị số liệu impact cho spec và eval.
+- **AI hỗ trợ:** Hỗ trợ kiểm tra quy tắc đếm, tìm các trường dữ liệu liên quan và phát hiện chỗ cần ghi rõ phương pháp.
+- **Bài học từ case fail:** Số liệu chỉ có giá trị khi người khác có thể chạy lại cách đếm; cần tách rõ quan sát từ dữ liệu với suy luận về nguyên nhân.
+>>>>>>> c26b79edf5c083cc70239ed9011a528cab8a2cf9

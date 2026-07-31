@@ -10,7 +10,7 @@ Loại: [x] Tối ưu tính năng có sẵn &nbsp;&nbsp;[ ] Tính năng mới
 - **Core JTBD** *(không tên sản phẩm/AI trong câu)*: Đào sâu thêm một khái niệm vừa được giải đáp, ngay khi còn đang tập trung vào slide, mà không phải tự nghĩ ra câu hỏi tiếp theo.
   - *Tự kiểm:* bỏ chữ "tutor/AI" khỏi câu — việc "muốn hiểu sâu hơn ngay sau khi vừa được giải đáp, nhưng không biết hỏi gì tiếp" vẫn tồn tại với bất kỳ hình thức hỏi-đáp nào (hỏi giảng viên, hỏi bạn) → đây là job thật, không phải chỗ nhét AI.
 - **Problem statement** *(không chữ AI)*: Học viên đang học buổi học trên VLearn, sau khi được trả lời một câu hỏi thì muốn hỏi tiếp để hiểu sâu hơn nhưng không biết nên hỏi gì tiếp, nên bỏ qua các điểm chưa hiểu hoặc thoát khỏi buổi học giữa chừng.
-- **Evidence** *(đường B — mining, nguồn `data/vlearn-pack/chatlog/`, xem `DATA_DICTIONARY.md`)*:
+- **Evidence** *(đường B — mining, nguồn `codebase/data/vlearn-pack/chatlog/`, xem `DATA_DICTIONARY.md`)*:
   - Cỡ mẫu: 2,522 dòng = 1,261 turn (mỗi turn = 1 cặp student+tutor), 369 user, 585 hội thoại, 22–29/07/2026, 100% `in_class`.
   - **Số đếm được:**
     - `follow_ups` (câu hỏi gợi ý tiếp theo tutor tự sinh) = rỗng ở **1,261/1,261 turn (100%)** — trường đã có sẵn trong schema sản phẩm nhưng **chưa từng được dùng một lần nào**. Đây là bằng chứng trực tiếp: tutor hiện tại không chủ động gợi câu hỏi kế tiếp, học viên phải tự nghĩ.
@@ -44,9 +44,9 @@ Loại: [x] Tối ưu tính năng có sẵn &nbsp;&nbsp;[ ] Tính năng mới
   1. Không sửa lại pipeline trả lời chính của tutor (citation rate, độ dài câu trả lời) — chỉ thêm lớp gợi ý follow-up phía sau.
   2. Không làm bản đồ lỗ hổng lớp học cho giảng viên (đây là hướng khác trong đề bài) — chỉ phục vụ trải nghiệm học viên tại chỗ.
   3. Không tự động hỏi lại kiểm tra hiểu bài (ứng viên C ở §2) — học viên luôn là người chủ động bấm hoặc bỏ qua gợi ý, không bị ép trả lời.
-  4. Không lưu lịch sử gợi ý qua nhiều phiên học (cache chỉ tồn tại trong phiên hiện tại, TTL 5 phút — xem `lib/suggestion-cache.ts`).
+  4. Không lưu lịch sử gợi ý qua nhiều phiên học (cache chỉ tồn tại trong phiên hiện tại, TTL 5 phút — xem `codebase/lib/suggestion-cache.ts`).
 - **Mức prototype nhắm tới:** [ ] Sketch &nbsp; [x] Mock &nbsp; [ ] Working
-  - **Thật:** gọi LLM thật để sinh follow-up (`/api/track/idle`, `/api/tutor`), retrieval thật qua Qdrant (`lib/rag.ts`, 2 collection `slides`/`transcripts`), kiểm tra an toàn thật qua `lib/tools/anti-cheat.ts`, UI bấm được đầy đủ (`components/tutor-chat.tsx`).
+  - **Thật:** gọi LLM thật để sinh follow-up (`/api/track/idle`, `/api/tutor`), retrieval thật qua Qdrant (`codebase/lib/rag.ts`, 2 collection `slides`/`transcripts`), kiểm tra an toàn thật qua `codebase/lib/tools/anti-cheat.ts`, UI bấm được đầy đủ (`codebase/components/tutor-chat.tsx`).
   - **Mock/giả lập:** cache gợi ý ở bộ nhớ trong tiến trình Node (module-level `Map`, không phải Redis/DB thật — chấp nhận được cho quy mô demo); ngưỡng "idle" cố định cứng 15s (`IDLE_THRESHOLD_MS`), chưa cá nhân hoá theo tốc độ đọc của từng học viên.
 - **Automation:** [ ] augment &nbsp; [x] conditional &nbsp; [ ] automate
   - **Lý do theo cost-of-error:** AI tự sinh và hiện gợi ý ngay (không cần người duyệt trước — sai một gợi ý không đắt, học viên chỉ cần bấm "Bỏ qua"), nhưng khi câu hỏi/ngữ cảnh có dấu hiệu rủi ro (ngoài phạm vi, có thể là gian lận, prompt injection, câu hỏi rác/gibberish) hệ thống **chuyển sang trả lời an toàn thay vì tự trả lời liều** (`checkAcademicIntegrity` → `safeResponse`) — đây chính là điều kiện "đa số case lành, số ít hiểm" của mức conditional.
@@ -55,11 +55,11 @@ Loại: [x] Tối ưu tính năng có sẵn &nbsp;&nbsp;[ ] Tính năng mới
 
 | Nguyên tắc | Áp cụ thể vào đâu trong prototype |
 |---|---|
-| **G10 — Thu hẹp phạm vi khi nghi ngờ** | `lib/tools/anti-cheat.ts::checkAcademicIntegrity` — khi câu hỏi off-topic/gibberish/injection/đòi đáp án, hệ thống không tự trả lời liều mà trả về `safeResponse()` gợi hỏi lại đúng phạm vi slide hiện tại. |
-| **G8 — Gạt bỏ dễ dàng** | `SuggestionBlock` trong `components/tutor-chat.tsx` có nút **"Bỏ qua"** rõ ràng cạnh khối gợi ý — học viên tắt gợi ý bất kỳ lúc nào, không bị chặn flow chat chính. |
+| **G10 — Thu hẹp phạm vi khi nghi ngờ** | `codebase/lib/tools/anti-cheat.ts::checkAcademicIntegrity` — khi câu hỏi off-topic/gibberish/injection/đòi đáp án, hệ thống không tự trả lời liều mà trả về `safeResponse()` gợi hỏi lại đúng phạm vi slide hiện tại. |
+| **G8 — Gạt bỏ dễ dàng** | `SuggestionBlock` trong `codebase/components/tutor-chat.tsx` có nút **"Bỏ qua"** rõ ràng cạnh khối gợi ý — học viên tắt gợi ý bất kỳ lúc nào, không bị chặn flow chat chính. |
 | **G9 — Sửa/tiếp tục dễ dàng** | Mỗi câu gợi ý là 1 nút bấm để hỏi tiếp ngay (`onPick`), học viên vẫn gõ câu hỏi tự do (`Hoặc tự nhập câu hỏi…`) song song — không bắt buộc chọn trong danh sách gợi ý. |
-| **G11 — Giải thích vì sao** | Mỗi gợi ý hiển thị kèm nhãn trang trích dẫn `tag · tr.{page}` (`SuggestionBlock`), và câu trả lời chính luôn kèm "Trang X" khi có RAG match (`buildSystemPrompt` trong `app/api/tutor/route.ts`) — học viên biết gợi ý bám vào đâu trong slide. |
-| **G2 — Làm rõ nó làm tốt đến đâu** | System prompt ép "Nếu không chắc chắn, nói thẳng là chưa rõ và hướng dẫn xem slide" (`app/api/tutor/route.ts`), và khi không tìm được ngữ cảnh RAG, prompt tự nêu `"(không tìm thấy ngữ cảnh từ slide)"` thay vì im lặng bịa (`lib/rag.ts::buildRagPrompt`). |
+| **G11 — Giải thích vì sao** | Mỗi gợi ý hiển thị kèm nhãn trang trích dẫn `tag · tr.{page}` (`SuggestionBlock`), và câu trả lời chính luôn kèm "Trang X" khi có RAG match (`buildSystemPrompt` trong `codebase/app/api/tutor/route.ts`) — học viên biết gợi ý bám vào đâu trong slide. |
+| **G2 — Làm rõ nó làm tốt đến đâu** | System prompt ép "Nếu không chắc chắn, nói thẳng là chưa rõ và hướng dẫn xem slide" (`codebase/app/api/tutor/route.ts`), và khi không tìm được ngữ cảnh RAG, prompt tự nêu `"(không tìm thấy ngữ cảnh từ slide)"` thay vì im lặng bịa (`codebase/lib/rag.ts::buildRagPrompt`). |
 
 ## §5. Kiểu lỗi — 4 lớp chỗ khó + kịch bản (28 case, ánh xạ vào golden set `eval/golden-set.md`)
 
@@ -79,7 +79,7 @@ Loại: [x] Tối ưu tính năng có sẵn &nbsp;&nbsp;[ ] Tính năng mới
 - **Low-confidence (②):** Input mơ hồ/gõ sai (vd. G-07 "điêu toa", G-11 "d") → hệ thống không đoán bừa thành câu hỏi học thuật, ưu tiên bám sát nội dung slide hiện tại hoặc gợi hỏi lại thay vì tự tin trả lời một điều không chắc.
 - **Failure / không căn cứ (①):** Hỏi về nội dung không có trong slide (vd. G-15 "LangGraph") → tutor nói rõ "slide không đề cập" thay vì bịa, gợi ý xem trang liên quan gần nhất.
 - **Correction (user sửa):** Học viên hiểu sai và tuyên bố thẳng (vd. G-18 "LLM chỉ đoán bừa à?") → tutor sửa hiểu lầm bằng dẫn chứng cụ thể (Trang 11) rồi mới gợi follow-up liên quan.
-- **Khi bị đòi ngoài phạm vi (③):** Câu hỏi ngoài phạm vi bài giảng hoặc đòi hỏi vượt thẩm quyền (vd. G-21 nhờ viết hộ bài nộp, G-28 xin API key) → `checkAcademicIntegrity` gắn cờ `is_flagged`, hệ thống từ chối/redirect qua `safeResponse()`, ghi log vào `data/flagged-log.jsonl` (`logFlaggedInteraction`), **không** tự sinh follow-up học thuật giả.
+- **Khi bị đòi ngoài phạm vi (③):** Câu hỏi ngoài phạm vi bài giảng hoặc đòi hỏi vượt thẩm quyền (vd. G-21 nhờ viết hộ bài nộp, G-28 xin API key) → `checkAcademicIntegrity` gắn cờ `is_flagged`, hệ thống từ chối/redirect qua `safeResponse()`, ghi log vào `codebase/data/flagged-log.jsonl` (`logFlaggedInteraction`), **không** tự sinh follow-up học thuật giả.
 - **Case đặc thù domain (④):** Slide trộn thuật ngữ tiếng Anh, học viên hỏi tiếng Việt (vd. G-12) → follow-up giữ tiếng Việt nhưng giữ nguyên thuật ngữ tiếng Anh chuẩn (không dịch sai thuật ngữ kỹ thuật).
 
 ## §7. Kiểm thử
@@ -98,7 +98,7 @@ Loại: [x] Tối ưu tính năng có sẵn &nbsp;&nbsp;[ ] Tính năng mới
 
   **Phân tích nguyên nhân run 01 chưa đạt bar** *(rubric: chưa đạt vẫn tính đủ điểm nếu phân tích được)*:
   - 12/28 case fail, tập trung ở lớp ② (mơ hồ/input ngắn-sai chính tả: G-04, G-07, G-11) và lớp ③ (ngoài phạm vi: G-16, G-17, G-21, G-25, G-28) — mô hình có xu hướng **trả lời tự tin và đầy đủ** thay vì thận trọng/từ chối khi input mơ hồ hoặc ngoài phạm vi.
-  - **Quan sát cần xác nhận lại:** một số case fail (đặc biệt G-11 "d" — 1 ký tự) lẽ ra phải bị `isGibberish()` trong `lib/tools/anti-cheat.ts` chặn lại (điều kiện `stripped.length < 3` khớp), nhưng output run 01 vẫn là một câu trả lời đầy đủ về nội dung slide. Nghi vấn: run 01 được test thủ công qua prompt nháp (dán câu hỏi trực tiếp cho LLM, theo cách gợi ý ở guide §2.6 bước 1) chứ **chưa chạy qua đúng endpoint `/api/tutor` thật** (nơi anti-cheat được gọi trước RAG).
+  - **Quan sát cần xác nhận lại:** một số case fail (đặc biệt G-11 "d" — 1 ký tự) lẽ ra phải bị `isGibberish()` trong `codebase/lib/tools/anti-cheat.ts` chặn lại (điều kiện `stripped.length < 3` khớp), nhưng output run 01 vẫn là một câu trả lời đầy đủ về nội dung slide. Nghi vấn: run 01 được test thủ công qua prompt nháp (dán câu hỏi trực tiếp cho LLM, theo cách gợi ý ở guide §2.6 bước 1) chứ **chưa chạy qua đúng endpoint `/api/tutor` thật** (nơi anti-cheat được gọi trước RAG).
   - Hành động đã/sẽ làm: giữ nguyên logic `checkAcademicIntegrity` (đã có sẵn, đúng hướng) nhưng cần **xác nhận nó thực sự nằm trên đường đi được test**, đồng thời làm rõ hơn trong system prompt của `/api/tutor` việc "không chắc thì nói rõ" cho các câu hỏi ngắn/mơ hồ không bị chặn cứng bởi rule (vd. G-04 "sờ lai" — không phải gibberish theo rule nhưng vẫn cần hỏi lại thay vì trả lời sang chủ đề khác).
 
 ## §8. Phân công & kế hoạch
@@ -125,5 +125,15 @@ Loại: [x] Tối ưu tính năng có sẵn &nbsp;&nbsp;[ ] Tính năng mới
 
 | Thời điểm | Đổi gì | Vì sao (trỏ về feedback/case nào) |
 |---|---|---|
-| Sau vòng validation (`validation/validation-log.md`) | Thêm streaming cho câu trả lời tutor (`app/api/tutor/stream/route.ts`, các commit "fix old streaming package") | Phản hồi từ Phan Hoàng Dũng, Mai Tiến Mạnh: câu trả lời/gợi ý hiển thị chậm → cần cảm giác phản hồi mượt hơn |
+| Sau vòng validation (`validation/validation-log.md`) | Thêm streaming cho câu trả lời tutor (`codebase/app/api/tutor/stream/route.ts`, các commit "fix old streaming package") | Phản hồi từ Phan Hoàng Dũng, Mai Tiến Mạnh: câu trả lời/gợi ý hiển thị chậm → cần cảm giác phản hồi mượt hơn |
 | Sau vòng validation | *(kế hoạch)* Điều chỉnh prompt sinh follow-up để bám ngữ cảnh hơn | Phản hồi từ Ngô Nguyễn Khải Hưng: "chatbot đôi khi gợi ý câu hỏi không liên quan đến nội dung người dùng hỏi" |
+
+## §10. Focus Tracking — bổ sung sau lát cắt tutor
+
+- **Input:** mouse/keyboard interaction và trạng thái audio silence trong phiên học.
+- **Quyết định:** sau 15 giây không tương tác, ghi nhận `low focus`; chỉ ghi nhận `lost focus` khi silence đồng thời với không tương tác.
+- **Output:** Focus Timeline hiển thị khoảng thời gian theo phút; Smart Reminder trong chatbot hỏi nhẹ nhàng liệu học viên có cần nghỉ một chút không.
+- **Phần thật:** state machine client, event listeners, microphone Web Audio, timeline và reminder UI.
+- **Phần mock:** checkbox mô phỏng silence, vì microphone thật phụ thuộc permission; dữ liệu timeline chỉ tồn tại trong phiên và không gửi audio lên server.
+- **Giới hạn an toàn:** microphone bị từ chối hoặc không khả dụng không được xem là silence; hệ thống không coi tín hiệu này là chẩn đoán tâm lý hay kết luận chắc chắn về sự tập trung.
+- **Artifact chạy được:** prototype nằm trong `codebase/`; hướng dẫn chạy và cấu trúc nộp bài nằm ở root `README.md`.
