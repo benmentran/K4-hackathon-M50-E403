@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { ChevronLeft, ChevronRight, FileText, Library, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
+import { ChevronLeft, ChevronRight, FileText, LogOut, RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
 import { PdfPageView } from "@/components/pdf-page-view"
 import { type Deck, pdfFileUrl } from "@/lib/deck-types"
 import { cn } from "@/lib/utils"
@@ -81,10 +81,10 @@ export function SlidePanel({
           <button
             type="button"
             onClick={onOpenLibrary}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground lg:hidden"
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive lg:hidden"
           >
-            <Library className="size-4" aria-hidden="true" />
-            Thư viện
+            <LogOut className="size-3.5" aria-hidden="true" />
+            Thoát
           </button>
 
           <div
@@ -134,6 +134,7 @@ export function SlidePanel({
         {deck.kind === "pdf" ? (
           <div className="p-4" style={{ width: `${Math.max(100, zoom * 100)}%` }}>
             <PdfPageView
+              key={deck.id}
               fileUrl={pdfFileUrl(deck.id)}
               page={slide.page}
               renderWidth={Math.max(320, (containerWidth - 32) * zoom)}

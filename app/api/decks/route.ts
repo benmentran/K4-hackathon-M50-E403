@@ -1,7 +1,9 @@
-import { get, list, put } from "@vercel/blob"
+import { del, get, list, put } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
 import type { DeckMeta } from "@/lib/deck-types"
 import type { Slide } from "@/lib/tutor-data"
+import { ingestDeck } from "@/lib/ingest-deck"
+import { isQdrantConfigured } from "@/lib/qdrant"
 
 const PREFIX = "decks/"
 const MAX_BYTES = 25 * 1024 * 1024
@@ -85,6 +87,7 @@ export async function POST(request: NextRequest) {
       title: title || file.name.replace(/\.pdf$/i, "") || "Bài giảng mới",
       course: course || "Slide đã nạp",
       kind: "pdf",
+      source: "upload",
       pageCount: outline.length,
       firstPage: outline[0].page,
       createdAt: new Date().toISOString(),
@@ -98,7 +101,37 @@ export async function POST(request: NextRequest) {
       contentType: "application/json",
     })
 
-    return NextResponse.json({ deck: meta })
+    // ── RAG ingest (GOAL.md §2) ─────────────────────────────────────────────
+    // After storing the PDF, stream it into the RAG pipeline.
+    // We re-fetch the blob to get the raw ArrayBuffer for pdfjs.
+    let ingestResult: { pages: number; chunks: number } | null = null
+    if (isQdrantConfigured()) {
+      try {
+        const blob = await get(`${PREFIX}${id}/source.pdf`, { access: "private" })
+        if (blob) {
+          // @vercel/blob v5: get() returns { statusCode, stream, headers, blob: { ... } }
+          // Extract the inner blob object and use its downloadUrl
+          const inner = (blob as unknown as { blob?: { downloadUrl?: string } }).blob
+          const url = inner?.downloadUrl ?? (blob as unknown as { downloadUrl?: string }).downloadUrl
+          if (url) {
+            const resp = await fetch(url)
+            const buf = await resp.arrayBuffer()
+            ingestResult = await ingestDeck({ deckId: id, pdfBuffer: buf })
+            console.log(`[ingest] deck=${id} pages=${ingestResult.pages} chunks=${ingestResult.chunks}`)
+          }
+        }
+      } catch (ingestErr) {
+        // Non-fatal: PDF is stored, RAG just won't work until next ingest attempt.
+        console.error("[ingest] RAG ingest failed:", ingestErr)
+      }
+    }
+
+    return NextResponse.json({
+      deck: meta,
+      ingest: ingestResult
+        ? { collection: `slide_${id}`, pages: ingestResult.pages, chunks: ingestResult.chunks }
+        : { skipped: "Qdrant not configured" },
+    })
   } catch (error) {
     console.error("[v0] upload deck failed:", error)
     return NextResponse.json({ error: "Tải slide lên thất bại" }, { status: 500 })

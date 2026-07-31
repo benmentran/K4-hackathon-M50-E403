@@ -64,30 +64,98 @@ function buildDeckIntro(deck: Deck): { turns: Turn[]; answers: Record<string, An
   }
 }
 
+type TutorApiResponse = {
+  content?: string
+  page?: number | null
+  citations?: number[]
+  flagged?: boolean
+  reason?: string
+  ragConfigured?: boolean
+  error?: string
+}
+
+type IdleSuggestion = {
+  suggestions?: string[]
+  citations?: number[]
+  questions?: string[]
+}
+
 type Answerish = { content: string; page: number; suggestions: Suggestion[] }
+
+const IDLE_THRESHOLD_MS = 15_000
 
 export function TutorChat({
   deck,
+  currentPage,
   onPageChange,
   onCollapse,
 }: {
   deck: Deck
+  currentPage?: number
   onPageChange: (page: number) => void
   onCollapse: () => void
 }) {
-  const isSample = deck.kind === "sample"
-  const intro = useMemo(() => (isSample ? null : buildDeckIntro(deck)), [deck, isSample])
+  const isBuiltin = deck.kind === "pdf" && deck.source === "builtin"
+  const usePreset = deck.kind === "sample" || isBuiltin
+  const intro = useMemo(() => (usePreset ? null : buildDeckIntro(deck)), [deck, usePreset])
 
   const [turns, setTurns] = useState<Turn[]>(SAMPLE_INITIAL)
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({})
   const [draft, setDraft] = useState("")
   const [thinking, setThinking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [idleSuggestions, setIdleSuggestions] = useState<string[]>([])
+  const [idlePending, setIdlePending] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Idle detection: reset timer on page change ───────────────────────────────
+  useEffect(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    if (deck.kind === "pdf" && currentPage && !idlePending) {
+      idleTimerRef.current = setTimeout(() => {
+        void triggerIdle(deck.id, currentPage)
+      }, IDLE_THRESHOLD_MS)
+    }
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    }
+  }, [currentPage, deck.kind, deck.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function triggerIdle(deckId: string, page: number) {
+    setIdlePending(true)
+    try {
+      const res = await fetch("/api/track/idle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deckId, page, idleSeconds: IDLE_THRESHOLD_MS / 1000 }),
+      })
+      if (res.ok) {
+        const data = (await res.json()) as IdleSuggestion
+        const items = data.suggestions ?? data.questions ?? []
+        if (items.length) {
+          setIdleSuggestions(items)
+        }
+      }
+    } catch {
+      // best effort — don't bother the user
+    } finally {
+      setIdlePending(false)
+    }
+  }
+
+  // ── Show idle suggestions as a dismissible banner above the input ────────────
+  function pickIdleSuggestion(q: string) {
+    setIdleSuggestions([])
+    void ask(q)
+  }
 
   useEffect(() => {
     setTurns(intro ? intro.turns : SAMPLE_INITIAL)
     setDismissed({})
     setThinking(false)
+    setError(null)
+    setIdleSuggestions([])
   }, [intro])
 
   useEffect(() => {
@@ -108,36 +176,84 @@ export function TutorChat({
     }
   }
 
-  function ask(question: string, id?: string) {
-    const answer = isSample
-      ? (id && ANSWERS[id]) || FALLBACK
-      : (id && intro?.answers[id]) || deckFallback(question)
+  async function ask(question: string, id?: string) {
     const stamp = Date.now()
-
     setTurns((prev) => [...prev, { id: `u${stamp}`, role: "user", content: question }])
     setThinking(true)
-    onPageChange(answer.page)
+    setError(null)
+    setIdleSuggestions([])
 
-    setTimeout(() => {
+    const presetAnswer =
+      usePreset
+        ? id
+          ? ANSWERS[id]
+          : undefined
+        : id
+          ? intro?.answers[id]
+          : undefined
+
+    try {
+      const res = await fetch("/api/tutor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          page: currentPage,
+          deck: {
+            id: deck.id,
+            title: deck.title,
+            course: deck.course,
+            outline: deck.outline.map((s) => ({ page: s.page, title: s.title, bullets: [] })),
+            pageCount: deck.pageCount,
+          },
+        }),
+      })
+      const data = (await res.json()) as TutorApiResponse
+
+      if (!res.ok || !data.content) {
+        throw new Error(data.error ?? "Tutor không phản hồi.")
+      }
+
+      const answerPage =
+        typeof data.page === "number" && data.page > 0 ? data.page : presetAnswer?.page ?? 1
+
+      onPageChange(answerPage)
       setTurns((prev) => [
         ...prev,
         {
           id: `a${stamp}`,
           role: "tutor",
-          content: answer.content,
-          page: answer.page,
-          suggestions: answer.suggestions,
+          content: data.content!,
+          page: answerPage,
+          citations: data.citations,
+          suggestions: presetAnswer?.suggestions ?? [],
         },
       ])
+    } catch (err) {
+      console.warn("[tutor] API failed, dùng fallback:", err)
+      const fallback = presetAnswer ?? deckFallback(question)
+      onPageChange(fallback.page)
+      setTurns((prev) => [
+        ...prev,
+        {
+          id: `a${stamp}`,
+          role: "tutor",
+          content: fallback.content,
+          page: fallback.page,
+          suggestions: fallback.suggestions,
+        },
+      ])
+      setError(err instanceof Error ? err.message : "Đã dùng câu trả lời dự phòng.")
+    } finally {
       setThinking(false)
-    }, 650)
+    }
   }
 
   function submit() {
     const q = draft.trim()
     if (!q || thinking) return
     setDraft("")
-    ask(q)
+    void ask(q)
   }
 
   const lastTurn = turns[turns.length - 1]
@@ -177,12 +293,20 @@ export function TutorChat({
               <div className="flex flex-col gap-3">
                 <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
                   <p className="text-pretty text-sm leading-relaxed text-foreground">{turn.content}</p>
-                  {turn.page ? (
-                    <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <BookOpen className="size-3.5" aria-hidden="true" />
-                      Tham khảo slide {turn.page}
-                    </p>
-                  ) : null}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {turn.page ? (
+                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <BookOpen className="size-3.5" aria-hidden="true" />
+                        Slide {turn.page}
+                      </p>
+                    ) : null}
+                    {turn.citations && turn.citations.length > 0 ? (
+                      <p className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                        <BookOpen className="size-3.5" aria-hidden="true" />
+                        Cited: {turn.citations.join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
 
                 {turn.suggestions && turn.id === lastTurn.id && !dismissed[turn.id] && !thinking ? (
@@ -201,6 +325,34 @@ export function TutorChat({
           <p className="text-sm text-muted-foreground" aria-live="polite">
             Tutor đang trả lời…
           </p>
+        ) : null}
+
+        {error ? (
+          <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            {error} (đã dùng câu trả lời dự phòng)
+          </p>
+        ) : null}
+
+        {idleSuggestions.length > 0 ? (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-800 dark:bg-violet-950/40">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+              <Sparkles className="size-3.5" aria-hidden="true" />
+              Gợi ý sau khi dừng lại 15s
+            </div>
+            <ul className="flex flex-col gap-1.5">
+              {idleSuggestions.map((q, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => pickIdleSuggestion(q)}
+                    className="w-full text-left text-sm text-violet-800 dark:text-violet-200 hover:underline"
+                  >
+                    → {q}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
 
         <div ref={endRef} />

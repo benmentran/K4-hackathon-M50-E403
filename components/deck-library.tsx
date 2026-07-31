@@ -198,12 +198,16 @@ export function DeckLibrary({
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="truncate text-sm font-medium text-card-foreground">{deck.title}</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {deck.kind === "sample" ? "Slide mẫu" : `${deck.pageCount} trang`}
+                    {deck.kind === "sample"
+                      ? "Slide mẫu"
+                      : deck.source === "builtin"
+                        ? `${deck.pageCount} trang · Kèm sẵn`
+                        : `${deck.pageCount} trang`}
                   </span>
                 </span>
               </button>
 
-              {deck.kind === "pdf" ? (
+              {deck.kind === "pdf" && deck.source !== "builtin" ? (
                 <button
                   type="button"
                   onClick={() => void handleDelete(deck)}

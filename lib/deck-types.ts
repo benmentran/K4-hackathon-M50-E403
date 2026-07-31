@@ -1,13 +1,22 @@
 import type { Slide } from "@/lib/tutor-data"
+import { isBuiltinDeckId } from "@/lib/builtin-decks"
 
 export type DeckKind = "sample" | "pdf"
 
-/** Metadata stored in Blob as decks/<id>/meta.json */
+export type DeckSource = "builtin" | "upload"
+
+/** Metadata stored in Blob as decks/<id>/meta.json (uploaded decks) */
 export type DeckMeta = {
   id: string
   title: string
   course: string
+  description?: string
+  /** Tailwind gradient classes for the preview cover, e.g. "from-indigo-500 via-violet-500 to-fuchsia-500" */
+  cover?: string
+  /** Short label shown on the card, e.g. "AI · LLM" */
+  tag?: string
   kind: DeckKind
+  source: DeckSource
   pageCount: number
   /** First page number (PDF decks always start at 1) */
   firstPage: number
@@ -24,7 +33,8 @@ export type Deck = DeckMeta
 export const SAMPLE_DECK_ID = "sample"
 
 export function pdfFileUrl(deckId: string) {
-  return `/api/decks/${encodeURIComponent(deckId)}/file`
+  const path = isBuiltinDeckId(deckId) ? "built-in" : "decks"
+  return `/api/${path}/${encodeURIComponent(deckId)}/file`
 }
 
 /** Turn raw text lines of a PDF page into a title + bullet outline. */

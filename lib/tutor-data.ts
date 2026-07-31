@@ -16,6 +16,7 @@ export type Turn = {
   role: "user" | "tutor"
   content: string
   page?: number
+  citations?: number[]
   suggestions?: Suggestion[]
 }
 

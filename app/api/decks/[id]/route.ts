@@ -1,11 +1,16 @@
 import { del, list } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
+import { isBuiltinDeckId } from "@/lib/builtin-decks"
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   if (!/^[a-zA-Z0-9-]+$/.test(id)) {
     return NextResponse.json({ error: "Mã slide không hợp lệ" }, { status: 400 })
+  }
+
+  if (isBuiltinDeckId(id)) {
+    return NextResponse.json({ error: "Không thể xoá slide kèm sẵn" }, { status: 400 })
   }
 
   try {
