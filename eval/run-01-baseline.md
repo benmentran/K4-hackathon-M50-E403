@@ -2,12 +2,12 @@
 
 Tổng số test case: **28**
 
-- ✅ Pass: **18**
-- ❌ Fail: **10**
+- ✅ Pass: **16**
+- ❌ Fail: **12**
 
 ---
 
-## G-01 — ✅ PASS
+## G-01 — ❌ FAIL
 
 - **Nguồn:** tự tạo
 - **Input:** "giải thích mô hình Double Diamond"
@@ -76,7 +76,7 @@ Tổng số test case: **28**
 
 ---
 
-## G-04 — ✅ PASS
+## G-04 — ❌ FAIL
 
 - **Nguồn:** chat_log
 - **Input:** "tóm tắt sờ lai này"
